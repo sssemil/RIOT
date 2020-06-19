@@ -25,8 +25,8 @@ USEMODULE += sock_async_event
 USEMODULE += event_thread_medium
 USEMODULE += event_timeout
 # UDP Port to use (20220 is default for DTLS).
-DTLS_PORT ?= 20220
-CFLAGS += -DDTLS_DEFAULT_PORT=$(DTLS_PORT)
+# DTLS_PORT ?= 20220
+# CFLAGS += -DDTLS_DEFAULT_PORT=$(DTLS_PORT)
 # NOTE: If no cipher suite is selected, CONFIG_DTLS_PSK is used by default.
 # This section should be commented out if using Kconfig
 # This adds support for TLS_PSK_WITH_AES_128_CCM_8

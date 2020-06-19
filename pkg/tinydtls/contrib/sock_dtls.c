@@ -26,7 +26,7 @@
 #include "net/sock/async/event.h"
 #endif
 
-#define ENABLE_DEBUG (0)
+#define ENABLE_DEBUG (1)
 #include "debug.h"
 #include "dtls_debug.h"
 
@@ -356,12 +356,15 @@ ssize_t sock_dtls_send(sock_dtls_t *sock, sock_dtls_session_t *remote,
     assert(remote);
     assert(data);
 
+    puts("get peer");
     /* check if session exists, if not create session first then send */
     if (!dtls_get_peer(sock->dtls_ctx, &remote->dtls_session)) {
         if (timeout == 0) {
+            puts("timeout == 0");
             return -ENOTCONN;
         }
 
+        puts("dtls_connect");
         /* no session with remote, creating new session.
          * This will also create new peer for this session */
         res = dtls_connect(sock->dtls_ctx, &remote->dtls_session);
@@ -396,13 +399,16 @@ ssize_t sock_dtls_send(sock_dtls_t *sock, sock_dtls_session_t *remote,
         }
     }
 
+    puts("dtls_write");
     res = dtls_write(sock->dtls_ctx, &remote->dtls_session,
                      (uint8_t *)data, len);
 #ifdef SOCK_HAS_ASYNC
+    puts("async MSG_SENT cb");
     if ((res >= 0) && (sock->async_cb != NULL)) {
         sock->async_cb(sock, SOCK_ASYNC_MSG_SENT, sock->async_cb_arg);
     }
 #endif /* SOCK_HAS_ASYNC */
+    puts("done");
     return res;
 }
 

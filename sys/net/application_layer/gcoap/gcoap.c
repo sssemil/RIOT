@@ -36,7 +36,7 @@
 #include "net/sock/dtls.h"
 #include "net/credman.h"
 
-#define ENABLE_DEBUG (0)
+#define ENABLE_DEBUG (1)
 #include "debug.h"
 
 /* Return values used by the _find_resource function. */
@@ -127,6 +127,8 @@ static void *_event_loop(void *arg)
         DEBUG("gcoap: cannot create sock: %d\n", res);
         return 0;
     }
+
+    sock_dtls_init();
 
     if (sock_dtls_create(&_dtls_sock, &_udp_sock,
                          SOCK_DTLS_CLIENT_TAG,
@@ -773,6 +775,7 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
                       const sock_udp_ep_t *remote,
                       gcoap_resp_handler_t resp_handler, void *context)
 {
+    puts("in gcoap_req_send");
     gcoap_request_memo_t *memo = NULL;
     unsigned msg_type  = (*buf & 0x30) >> 4;
     uint32_t timeout   = 0;
@@ -856,8 +859,19 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
         }
     }
 
-    sock_dtls_session_t session;
-    ssize_t res = sock_dtls_send(&_dtls_sock, &session, buf, len, SOCK_NO_TIMEOUT);
+    puts("gcoap_req_send: about to send req");
+    sock_dtls_session_t session = { 0 };
+
+    int res = sock_dtls_session_init(&_dtls_sock, remote, &session);
+    if (res <= 0) {
+        puts("cannot init session with remote");
+        return -1;
+    }
+
+    uint8_t handshake_buf[256];
+    while (sock_dtls_recv(&_dtls_sock, &session, handshake_buf, sizeof(handshake_buf), SOCK_NO_TIMEOUT) != -SOCK_DTLS_HANDSHAKE) {}
+
+    res = sock_dtls_send(&_dtls_sock, &session, buf, len, SOCK_NO_TIMEOUT);
     if (res <= 0) {
         if (memo != NULL) {
             if (msg_type == COAP_TYPE_CON) {
@@ -870,6 +884,7 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
         }
         DEBUG("gcoap: sock send failed: %d\n", (int)res);
     }
+    puts("gcoap_req_send: finish sending req");
     return (size_t)((res > 0) ? res : 0);
 }
 
