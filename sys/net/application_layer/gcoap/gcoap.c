@@ -120,7 +120,7 @@ static void *_event_loop(void *arg)
     memset(&local, 0, sizeof(sock_udp_ep_t));
     local.family = AF_INET6;
     local.netif  = SOCK_ADDR_ANY_NETIF;
-    local.port   = CONFIG_GCOAP_PORT;
+    local.port   = 5684;
 
     int res = sock_udp_create(&_udp_sock, &local, NULL, 0);
     if (res < 0) {
@@ -160,16 +160,18 @@ static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg)
             puts("Error creating session");
             return;
         }
-        puts("Connection to server successful");
+        puts("New client connected");
     }
     if (type & SOCK_ASYNC_CONN_FIN) {
-        puts("Session was destroyed");
+        puts("Session was destroyed by peer");
         // _close_sock(sock);
     }
     if (type & SOCK_ASYNC_CONN_RDY) {
         puts("Session became ready");
     }
     if (type & SOCK_ASYNC_MSG_RECV) {
+        puts("SOCK_AYSNC MSG_RECV");
+
         int res;
 
         if ((res = sock_dtls_recv(sock, &session, _listen_buf, sizeof(_listen_buf),
@@ -302,6 +304,7 @@ static void _on_resp_timeout(void *arg) {
 #endif
         event_timeout_set(&memo->resp_evt_tmout, timeout);
 
+        puts("_on_resp_timeout: about to send udp");
         ssize_t bytes = sock_udp_send(&_udp_sock, memo->msg.data.pdu_buf,
                                       memo->msg.data.pdu_len, &memo->remote_ep);
         if (bytes <= 0) {
@@ -869,7 +872,9 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
     }
 
     uint8_t handshake_buf[256];
-    while (sock_dtls_recv(&_dtls_sock, &session, handshake_buf, sizeof(handshake_buf), SOCK_NO_TIMEOUT) != -SOCK_DTLS_HANDSHAKE) {}
+    while ((res = sock_dtls_recv(&_dtls_sock, &session, handshake_buf, sizeof(handshake_buf), SOCK_NO_TIMEOUT)) != -SOCK_DTLS_HANDSHAKE) {
+        printf("received len: %d\n", res);
+    }
 
     res = sock_dtls_send(&_dtls_sock, &session, buf, len, SOCK_NO_TIMEOUT);
     if (res <= 0) {

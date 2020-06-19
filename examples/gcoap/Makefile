@@ -63,7 +63,7 @@ include $(RIOTBASE)/Makefile.include
 # for this module.
 ifndef CONFIG_KCONFIG_MODULE_GCOAP
 ## Uncomment to redefine port, for example use 61616 for RFC 6282 UDP compression.
-#GCOAP_PORT = 5683
+GCOAP_PORT = 5684
 #CFLAGS += -DCONFIG_GCOAP_PORT=$(GCOAP_PORT)
 
 ## Uncomment to redefine request token length, max 8.

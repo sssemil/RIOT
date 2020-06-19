@@ -343,7 +343,7 @@ int gcoap_cli_cmd(int argc, char **argv)
     if (strcmp(argv[1], "info") == 0) {
         uint8_t open_reqs = gcoap_op_state();
 
-        printf("CoAP server is listening on port %u\n", CONFIG_GCOAP_PORT);
+        printf("CoAP server is listening on port %u\n", 5684);
         printf(" CLI requests sent: %u\n", req_count);
         printf("CoAP open requests: %u\n", open_reqs);
         printf("Configured Proxy: ");

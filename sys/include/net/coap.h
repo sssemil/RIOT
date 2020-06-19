@@ -191,7 +191,7 @@ extern "C" {
  * (@ref CONFIG_COAP_ACK_TIMEOUT * @ref CONFIG_COAP_RANDOM_FACTOR_1000 / 1000).
  */
 #ifndef CONFIG_COAP_ACK_TIMEOUT
-#define CONFIG_COAP_ACK_TIMEOUT        (2U)
+#define CONFIG_COAP_ACK_TIMEOUT        (10U)
 #endif
 
 /**
