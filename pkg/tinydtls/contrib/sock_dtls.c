@@ -76,7 +76,6 @@ static dtls_handler_t _dtls_handler = {
 static int _read(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
                  size_t len)
 {
-    (void)session;
     sock_dtls_t *sock = dtls_get_app_data(ctx);
 
     DEBUG("sock_dtls: decrypted message arrived\n");
@@ -496,6 +495,7 @@ static ssize_t _complete_handshake(sock_dtls_t *sock,
                                    const session_t *session)
 {
     memcpy(&remote->dtls_session, session, sizeof(remote->dtls_session));
+    _session_to_ep(&remote->dtls_session, &remote->ep);
 #ifdef SOCK_HAS_ASYNC
     if (sock->async_cb) {
         sock_async_flags_t flags = SOCK_ASYNC_CONN_RDY;
@@ -583,6 +583,7 @@ static void _session_to_ep(const session_t *session, sock_udp_ep_t *ep)
     ep->port = session->port;
     ep->netif = session->ifindex;
     memcpy(&ep->addr.ipv6, &session->addr, sizeof(ipv6_addr_t));
+    ep->family = AF_INET6;  // FIXME: determine dynamically
 }
 
 static inline uint32_t _update_timeout(uint32_t start, uint32_t timeout)

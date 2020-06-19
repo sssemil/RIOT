@@ -197,6 +197,7 @@ static void _process_coap_pdu(sock_dtls_t *sock, sock_dtls_session_t *session, u
 {
     puts("entering _processing_coap_pdu");
     printf("session: port: %d; ifindex: %d\n", session->dtls_session.port, session->dtls_session.ifindex);
+    printf("ep: port: %d; netif: %d\n", session->ep.port, session->ep.netif);
 
     coap_pkt_t pdu;
     gcoap_request_memo_t *memo = NULL;
@@ -212,6 +213,7 @@ static void _process_coap_pdu(sock_dtls_t *sock, sock_dtls_session_t *session, u
     switch (coap_get_code_class(&pdu)) {
     /* incoming request or empty */
     case COAP_CLASS_REQ:
+        puts("COAP REQ");
         if (coap_get_code_raw(&pdu) == COAP_CODE_EMPTY) {
             /* ping request */
             if (coap_get_type(&pdu) == COAP_TYPE_CON) {
@@ -252,6 +254,7 @@ empty_as_response:
     case COAP_CLASS_SUCCESS:
     case COAP_CLASS_CLIENT_FAILURE:
     case COAP_CLASS_SERVER_FAILURE:
+        puts("COAP RESPONSE");
         _find_req_memo(&memo, &pdu, &session->ep);
         if (memo) {
             switch (coap_get_type(&pdu)) {
@@ -525,6 +528,7 @@ static void _find_req_memo(gcoap_request_memo_t **memo_ptr, coap_pkt_t *src_pdu,
             if ((memcmp(src_pdu->token, memo_pdu->token, cmplen) == 0)
                     && sock_udp_ep_equal(&memo->remote_ep, remote)) {
                 *memo_ptr = memo;
+                puts("FOUND MEMO");
                 break;
             }
         }
