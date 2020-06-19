@@ -27,6 +27,34 @@
 #include "od.h"
 #include "fmt.h"
 
+#include "net/sock/dtls.h"
+#include "net/ipv6/addr.h"
+#include "net/credman.h"
+
+#include "tinydtls_common.h"
+#include "tinydtls_keys.h"
+
+#ifndef CLIENT_SEND_TIMEOUT
+  /* timeout for client_send command */
+#define CLIENT_SEND_TIMEOUT  (1U * US_PER_SEC)
+#endif
+
+#define SOCK_DTLS_CLIENT_TAG (2)
+
+static const uint8_t psk_id_0[] = PSK_DEFAULT_IDENTITY;
+static const uint8_t psk_key_0[] = PSK_DEFAULT_KEY;
+
+static const credman_credential_t credential = {
+    .type = CREDMAN_TYPE_PSK,
+    .tag = SOCK_DTLS_CLIENT_TAG,
+    .params = {
+        .psk = {
+            .key = { .s = psk_key_0, .len = sizeof(psk_key_0) - 1, },
+            .id = { .s = psk_id_0, .len = sizeof(psk_id_0) - 1, },
+        }
+    },
+};
+
 #define ENABLE_DEBUG (0)
 #include "debug.h"
 
@@ -351,6 +379,8 @@ int gcoap_cli_cmd(int argc, char **argv)
         return 1;
     }
 
+
+
     /* if not 'info' and 'proxy', must be a method code or ping */
     int code_pos = -1;
     for (size_t i = 0; i < ARRAY_SIZE(method_codes); i++) {
@@ -464,5 +494,12 @@ int gcoap_cli_cmd(int argc, char **argv)
 
 void gcoap_cli_init(void)
 {
+    int res = credman_add(&credential);
+    if (res < 0 && res != CREDMAN_EXIST) {
+        /* ignore duplicate credentials */
+        printf("Error cannot add credential to system: %d\n", (int)res);
+        return;
+    }
+
     gcoap_register_listener(&_listener);
 }

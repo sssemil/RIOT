@@ -19,6 +19,27 @@ USEMODULE += gcoap
 # Additional networking modules that can be dropped if not needed
 USEMODULE += gnrc_icmpv6_echo
 
+# DTLS dependencies
+USEMODULE += tinydtls_sock_dtls
+USEMODULE += sock_async_event
+USEMODULE += event_thread_medium
+USEMODULE += event_timeout
+# UDP Port to use (20220 is default for DTLS).
+DTLS_PORT ?= 20220
+CFLAGS += -DDTLS_DEFAULT_PORT=$(DTLS_PORT)
+# NOTE: If no cipher suite is selected, CONFIG_DTLS_PSK is used by default.
+# This section should be commented out if using Kconfig
+# This adds support for TLS_PSK_WITH_AES_128_CCM_8
+CFLAGS += -DCONFIG_DTLS_PSK
+# This adds support for TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8
+# CFLAGS += -DCONFIG_DTLS_ECC
+
+# Uncomment to enable debug logs
+# CFLAGS += -DCONFIG_DTLS_DEBUG
+
+# FIXME: This is a temporary patch
+CFLAGS += -DTHREAD_STACKSIZE_MAIN=\(2*THREAD_STACKSIZE_LARGE\)
+
 # Required by gcoap example
 USEMODULE += od
 USEMODULE += fmt

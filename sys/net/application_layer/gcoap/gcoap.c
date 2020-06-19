@@ -33,6 +33,9 @@
 #include "random.h"
 #include "thread.h"
 
+#include "net/sock/dtls.h"
+#include "net/credman.h"
+
 #define ENABLE_DEBUG (0)
 #include "debug.h"
 
@@ -41,12 +44,13 @@
 #define GCOAP_RESOURCE_WRONG_METHOD -1
 #define GCOAP_RESOURCE_NO_PATH -2
 
+#define SOCK_DTLS_CLIENT_TAG (2)
+
 /* End of the range to pick a random timeout */
 #define TIMEOUT_RANGE_END (CONFIG_COAP_ACK_TIMEOUT * CONFIG_COAP_RANDOM_FACTOR_1000 / 1000)
 
 /* Internal functions */
 static void *_event_loop(void *arg);
-static void _on_sock_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg);
 static ssize_t _well_known_core_handler(coap_pkt_t* pdu, uint8_t *buf, size_t len, void *ctx);
 static size_t _handle_req(coap_pkt_t *pdu, uint8_t *buf, size_t len,
                                                          sock_udp_ep_t *remote);
@@ -101,7 +105,11 @@ static kernel_pid_t _pid = KERNEL_PID_UNDEF;
 static char _msg_stack[GCOAP_STACK_SIZE];
 static event_queue_t _queue;
 static uint8_t _listen_buf[CONFIG_GCOAP_PDU_BUF_SIZE];
-static sock_udp_t _sock;
+static sock_udp_t _udp_sock;
+static sock_dtls_t _dtls_sock;
+
+static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg);
+static void _process_coap_pdu(sock_dtls_t *sock, sock_dtls_session_t *session, uint8_t *buf, size_t len);
 
 /* Event loop for gcoap _pid thread. */
 static void *_event_loop(void *arg)
@@ -114,122 +122,158 @@ static void *_event_loop(void *arg)
     local.netif  = SOCK_ADDR_ANY_NETIF;
     local.port   = CONFIG_GCOAP_PORT;
 
-    int res = sock_udp_create(&_sock, &local, NULL, 0);
+    int res = sock_udp_create(&_udp_sock, &local, NULL, 0);
     if (res < 0) {
         DEBUG("gcoap: cannot create sock: %d\n", res);
         return 0;
     }
 
+    if (sock_dtls_create(&_dtls_sock, &_udp_sock,
+                         SOCK_DTLS_CLIENT_TAG,
+                         SOCK_DTLS_1_2, SOCK_DTLS_CLIENT) < 0) {
+        puts("Error creating DTLS sock");
+        sock_udp_close(&_udp_sock);
+        return 0;
+    }
+
     event_queue_init(&_queue);
-    sock_udp_event_init(&_sock, &_queue, _on_sock_evt, NULL);
+    sock_dtls_event_init(&_dtls_sock, &_queue, _dtls_handler, NULL);
+
     event_loop(&_queue);
 
     return 0;
 }
 
+static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg)
+{
+    (void)arg;
+
+    sock_dtls_session_t session = { 0 };
+
+    // event_timeout_clear(&_timeouter);
+    if (type & SOCK_ASYNC_CONN_RECV) {
+        puts("Session handshake received");
+        if (sock_dtls_recv(sock, &session, _listen_buf, sizeof(_listen_buf),
+                           0) != -SOCK_DTLS_HANDSHAKE) {
+            puts("Error creating session");
+            return;
+        }
+        puts("Connection to server successful");
+    }
+    if (type & SOCK_ASYNC_CONN_FIN) {
+        puts("Session was destroyed");
+        // _close_sock(sock);
+    }
+    if (type & SOCK_ASYNC_CONN_RDY) {
+        puts("Session became ready");
+    }
+    if (type & SOCK_ASYNC_MSG_RECV) {
+        int res;
+
+        if ((res = sock_dtls_recv(sock, &session, _listen_buf, sizeof(_listen_buf),
+                                  0)) < 0) {
+            printf("Error receiving DTLS message\n");
+        }
+
+        _process_coap_pdu(sock, &session, _listen_buf, res);
+    }
+    else if (type & SOCK_ASYNC_MSG_SENT) {
+        puts("DTLS message was sent");
+    }
+    else if (type & SOCK_ASYNC_PATH_PROP) {
+        puts("Path property changed");
+    }
+}
+
 /* Handles sock events from the event queue. */
-static void _on_sock_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg)
+static void _process_coap_pdu(sock_dtls_t *sock, sock_dtls_session_t *session, uint8_t *buf, size_t len)
 {
     coap_pkt_t pdu;
-    sock_udp_ep_t remote;
     gcoap_request_memo_t *memo = NULL;
 
-    (void)arg;
-    if (type & SOCK_ASYNC_MSG_RECV) {
-        ssize_t res = sock_udp_recv(sock, _listen_buf, sizeof(_listen_buf),
-                                    0, &remote);
-        if (res <= 0) {
-            DEBUG("gcoap: udp recv failure: %d\n", (int)res);
-            return;
-        }
+    int res = coap_parse(&pdu, buf, len);
+    if (res < 0) {
+        DEBUG("gcoap: parse failure: %d\n", (int)res);
+        /* If a response, can't clear memo, but it will timeout later. */
+        return;
+    }
 
-        res = coap_parse(&pdu, _listen_buf, res);
-        if (res < 0) {
-            DEBUG("gcoap: parse failure: %d\n", (int)res);
-            /* If a response, can't clear memo, but it will timeout later. */
-            return;
-        }
+    /* validate class and type for incoming */
+    switch (coap_get_code_class(&pdu)) {
+    /* incoming request or empty */
+    case COAP_CLASS_REQ:
+        if (coap_get_code_raw(&pdu) == COAP_CODE_EMPTY) {
+            /* ping request */
+            if (coap_get_type(&pdu) == COAP_TYPE_CON) {
+                coap_hdr_set_type(pdu.hdr, COAP_TYPE_RST);
 
-        /* validate class and type for incoming */
-        switch (coap_get_code_class(&pdu)) {
-        /* incoming request or empty */
-        case COAP_CLASS_REQ:
-            if (coap_get_code_raw(&pdu) == COAP_CODE_EMPTY) {
-                /* ping request */
-                if (coap_get_type(&pdu) == COAP_TYPE_CON) {
-                    coap_hdr_set_type(pdu.hdr, COAP_TYPE_RST);
-
-                    ssize_t bytes = sock_udp_send(sock, _listen_buf,
-                                                  sizeof(coap_hdr_t), &remote);
-                    if (bytes <= 0) {
-                        DEBUG("gcoap: ping response failed: %d\n", (int)bytes);
-                    }
-                } else if (coap_get_type(&pdu) == COAP_TYPE_NON) {
-                    DEBUG("gcoap: empty NON msg\n");
+                ssize_t bytes = sock_dtls_send(sock, session, buf, sizeof(coap_hdr_t), 0);
+                if (bytes <= 0) {
+                    DEBUG("gcoap: ping response failed: %d\n", (int)bytes);
                 }
-                else {
-                    goto empty_as_response;
-                }
-            }
-            /* normal request */
-            else if (coap_get_type(&pdu) == COAP_TYPE_NON
-                    || coap_get_type(&pdu) == COAP_TYPE_CON) {
-                size_t pdu_len = _handle_req(&pdu, _listen_buf, sizeof(_listen_buf),
-                                             &remote);
-                if (pdu_len > 0) {
-                    ssize_t bytes = sock_udp_send(sock, _listen_buf, pdu_len,
-                                                  &remote);
-                    if (bytes <= 0) {
-                        DEBUG("gcoap: send response failed: %d\n", (int)bytes);
-                    }
-                }
+            } else if (coap_get_type(&pdu) == COAP_TYPE_NON) {
+                DEBUG("gcoap: empty NON msg\n");
             }
             else {
-                DEBUG("gcoap: illegal request type: %u\n", coap_get_type(&pdu));
+                goto empty_as_response;
             }
-            break;
+        }
+        /* normal request */
+        else if (coap_get_type(&pdu) == COAP_TYPE_NON
+                || coap_get_type(&pdu) == COAP_TYPE_CON) {
+            size_t pdu_len = _handle_req(&pdu, buf, sizeof(_listen_buf), &session->ep);
+            if (pdu_len > 0) {
+                ssize_t bytes = sock_dtls_send(sock, session, buf, pdu_len, 0);
+                if (bytes <= 0) {
+                    DEBUG("gcoap: send response failed: %d\n", (int)bytes);
+                }
+            }
+        }
+        else {
+            DEBUG("gcoap: illegal request type: %u\n", coap_get_type(&pdu));
+        }
+        break;
 
 empty_as_response:
-            DEBUG("gcoap: empty ack/reset not handled yet\n");
-            return;
+        DEBUG("gcoap: empty ack/reset not handled yet\n");
+        return;
 
-        /* incoming response */
-        case COAP_CLASS_SUCCESS:
-        case COAP_CLASS_CLIENT_FAILURE:
-        case COAP_CLASS_SERVER_FAILURE:
-            _find_req_memo(&memo, &pdu, &remote);
-            if (memo) {
-                switch (coap_get_type(&pdu)) {
-                case COAP_TYPE_NON:
-                case COAP_TYPE_ACK:
-                    if (memo->resp_evt_tmout.queue) {
-                        event_timeout_clear(&memo->resp_evt_tmout);
-                    }
-                    memo->state = GCOAP_MEMO_RESP;
-                    if (memo->resp_handler) {
-                        memo->resp_handler(memo, &pdu, &remote);
-                    }
-
-                    if (memo->send_limit >= 0) {        /* if confirmable */
-                        *memo->msg.data.pdu_buf = 0;    /* clear resend PDU buffer */
-                    }
-                    memo->state = GCOAP_MEMO_UNUSED;
-                    break;
-                case COAP_TYPE_CON:
-                    DEBUG("gcoap: separate CON response not handled yet\n");
-                    break;
-                default:
-                    DEBUG("gcoap: illegal response type: %u\n", coap_get_type(&pdu));
-                    break;
+    /* incoming response */
+    case COAP_CLASS_SUCCESS:
+    case COAP_CLASS_CLIENT_FAILURE:
+    case COAP_CLASS_SERVER_FAILURE:
+        _find_req_memo(&memo, &pdu, &session->ep);
+        if (memo) {
+            switch (coap_get_type(&pdu)) {
+            case COAP_TYPE_NON:
+            case COAP_TYPE_ACK:
+                if (memo->resp_evt_tmout.queue) {
+                    event_timeout_clear(&memo->resp_evt_tmout);
                 }
+                memo->state = GCOAP_MEMO_RESP;
+                if (memo->resp_handler) {
+                    memo->resp_handler(memo, &pdu, &session->ep);
+                }
+
+                if (memo->send_limit >= 0) {        /* if confirmable */
+                    *memo->msg.data.pdu_buf = 0;    /* clear resend PDU buffer */
+                }
+                memo->state = GCOAP_MEMO_UNUSED;
+                break;
+            case COAP_TYPE_CON:
+                DEBUG("gcoap: separate CON response not handled yet\n");
+                break;
+            default:
+                DEBUG("gcoap: illegal response type: %u\n", coap_get_type(&pdu));
+                break;
             }
-            else {
-                DEBUG("gcoap: msg not found for ID: %u\n", coap_get_id(&pdu));
-            }
-            break;
-        default:
-            DEBUG("gcoap: illegal code class: %u\n", coap_get_code_class(&pdu));
         }
+        else {
+            DEBUG("gcoap: msg not found for ID: %u\n", coap_get_id(&pdu));
+        }
+        break;
+    default:
+        DEBUG("gcoap: illegal code class: %u\n", coap_get_code_class(&pdu));
     }
 }
 
@@ -256,7 +300,7 @@ static void _on_resp_timeout(void *arg) {
 #endif
         event_timeout_set(&memo->resp_evt_tmout, timeout);
 
-        ssize_t bytes = sock_udp_send(&_sock, memo->msg.data.pdu_buf,
+        ssize_t bytes = sock_udp_send(&_udp_sock, memo->msg.data.pdu_buf,
                                       memo->msg.data.pdu_len, &memo->remote_ep);
         if (bytes <= 0) {
             DEBUG("gcoap: sock resend failed: %d\n", (int)bytes);
@@ -272,8 +316,7 @@ static void _on_resp_timeout(void *arg) {
  *
  * return length of response pdu, or < 0 if can't handle
  */
-static size_t _handle_req(coap_pkt_t *pdu, uint8_t *buf, size_t len,
-                                                         sock_udp_ep_t *remote)
+static size_t _handle_req(coap_pkt_t *pdu, uint8_t *buf, size_t len, sock_udp_ep_t *remote)
 {
     const coap_resource_t *resource     = NULL;
     gcoap_listener_t *listener          = NULL;
@@ -813,7 +856,7 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
         }
     }
 
-    ssize_t res = sock_udp_send(&_sock, buf, len, remote);
+    ssize_t res = sock_udp_send(&_udp_sock, buf, len, remote);
     if (res <= 0) {
         if (memo != NULL) {
             if (msg_type == COAP_TYPE_CON) {
@@ -891,7 +934,7 @@ size_t gcoap_obs_send(const uint8_t *buf, size_t len,
     _find_obs_memo_resource(&memo, resource);
 
     if (memo) {
-        ssize_t bytes = sock_udp_send(&_sock, buf, len, memo->observer);
+        ssize_t bytes = sock_udp_send(&_udp_sock, buf, len, memo->observer);
         return (size_t)((bytes > 0) ? bytes : 0);
     }
     else {
