@@ -80,8 +80,9 @@ static int _read(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
     sock_dtls_t *sock = dtls_get_app_data(ctx);
 
     DEBUG("sock_dtls: decrypted message arrived\n");
-    sock->buf = buf;
-    sock->buflen = len;
+    sock->buffer.data = buf;
+    sock->buffer.datalen = len;
+    sock->buffer.session = session;
 #ifdef SOCK_HAS_ASYNC
     if (sock->async_cb != NULL) {
         sock->async_cb(sock, SOCK_ASYNC_MSG_RECV, sock->async_cb_arg);
@@ -276,6 +277,7 @@ int sock_dtls_create(sock_dtls_t *sock, sock_udp_t *udp_sock,
     }
 
     sock->udp_sock = udp_sock;
+    sock->buffer.data = NULL;
 #ifdef SOCK_HAS_ASYNC
     sock->async_cb = NULL;
     sock->buf_ctx = NULL;
@@ -440,25 +442,33 @@ static void _check_more_chunks(sock_udp_t *udp_sock, void **data,
 }
 #endif
 
+static inline void _copy_session(sock_dtls_t *sock, sock_dtls_session_t *remote)
+{
+    memcpy(&remote->dtls_session, sock->buffer.session,
+           sizeof(remote->dtls_session));
+    _session_to_ep(&remote->dtls_session, &remote->ep);
+}
+
 static ssize_t _copy_buffer(sock_dtls_t *sock, sock_dtls_session_t *remote,
                             void *data, size_t max_len)
 {
-    uint8_t *buf = sock->buf;
-    size_t buflen = sock->buflen;
+    uint8_t *buf = sock->buffer.data;
+    size_t buflen = sock->buffer.datalen;
 
-    sock->buf = NULL;
+    sock->buffer.data = NULL;
     if (buflen > max_len) {
         return -ENOBUFS;
     }
 #if SOCK_HAS_ASYNC
     if (sock->buf_ctx != NULL) {
-        memcpy(data, buf, sock->buflen);
+        memcpy(data, buf, sock->buffer.datalen);
+        _copy_session(sock, remote);
         _check_more_chunks(sock->udp_sock, (void **)&buf, &sock->buf_ctx,
                            &remote->ep);
         if (sock->async_cb &&
             /* is there a message in the sock's mbox? */
             cib_avail(&sock->mbox.cib)) {
-            if (sock->buf) {
+            if (sock->buffer.data) {
                 sock->async_cb(sock, SOCK_ASYNC_MSG_RECV,
                                sock->async_cb_arg);
             }
@@ -475,6 +485,7 @@ static ssize_t _copy_buffer(sock_dtls_t *sock, sock_dtls_session_t *remote,
     /* use `memmove()` as tinydtls reuses `data` to store decrypted data with an
      * offset in `buf`. This prevents problems with overlapping buffers. */
     memmove(data, buf, buflen);
+    _copy_session(sock, remote);
     return buflen;
 }
 
@@ -488,7 +499,7 @@ static ssize_t _complete_handshake(sock_dtls_t *sock,
         sock_async_flags_t flags = SOCK_ASYNC_CONN_RDY;
 
         if (cib_avail(&sock->mbox.cib)) {
-            if (sock->buf) {
+            if (sock->buffer.data) {
                 flags |= SOCK_ASYNC_MSG_RECV;
             }
             else {
@@ -517,7 +528,7 @@ ssize_t sock_dtls_recv(sock_dtls_t *sock, sock_dtls_session_t *remote,
         uint32_t start_recv = xtimer_now_usec();
         msg_t msg;
 
-        if (sock->buf != NULL) {
+        if (sock->buffer.data != NULL) {
             return _copy_buffer(sock, remote, data, max_len);
         }
         else if (mbox_try_get(&sock->mbox, &msg) &&
@@ -605,7 +616,7 @@ void _udp_cb(sock_udp_t *udp_sock, sock_async_flags_t flags, void *ctx)
         sock->buf_ctx = data_ctx;
         res = dtls_handle_message(sock->dtls_ctx, &remote.dtls_session,
                                   data, res);
-        if (sock->buf == NULL) {
+        if (sock->buffer.data == NULL) {
             _check_more_chunks(udp_sock, &data, &data_ctx, &remote.ep);
             sock->buf_ctx = NULL;
         }
