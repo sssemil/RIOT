@@ -856,7 +856,8 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
         }
     }
 
-    ssize_t res = sock_udp_send(&_udp_sock, buf, len, remote);
+    sock_dtls_session_t session;
+    ssize_t res = sock_dtls_send(&_dtls_sock, &session, buf, len, SOCK_NO_TIMEOUT);
     if (res <= 0) {
         if (memo != NULL) {
             if (msg_type == COAP_TYPE_CON) {

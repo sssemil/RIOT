@@ -160,42 +160,42 @@ static void _resp_handler(const gcoap_request_memo_t *memo, coap_pkt_t* pdu,
         printf(", empty payload\n");
     }
 
-    /* ask for next block if present */
-    if (coap_get_block2(pdu, &block)) {
-        if (block.more) {
-            unsigned msg_type = coap_get_type(pdu);
-            if (block.blknum == 0 && !strlen(_last_req_path)) {
-                puts("Path too long; can't complete blockwise");
-                return;
-            }
+    // /* ask for next block if present */
+    // if (coap_get_block2(pdu, &block)) {
+    //     if (block.more) {
+    //         unsigned msg_type = coap_get_type(pdu);
+    //         if (block.blknum == 0 && !strlen(_last_req_path)) {
+    //             puts("Path too long; can't complete blockwise");
+    //             return;
+    //         }
 
-            if (_proxied) {
-                gcoap_req_init(pdu, (uint8_t *)pdu->hdr, CONFIG_GCOAP_PDU_BUF_SIZE,
-                               COAP_METHOD_GET, NULL);
-            }
-            else {
-                gcoap_req_init(pdu, (uint8_t *)pdu->hdr, CONFIG_GCOAP_PDU_BUF_SIZE,
-                               COAP_METHOD_GET, _last_req_path);
-            }
+    //         if (_proxied) {
+    //             gcoap_req_init(pdu, (uint8_t *)pdu->hdr, CONFIG_GCOAP_PDU_BUF_SIZE,
+    //                            COAP_METHOD_GET, NULL);
+    //         }
+    //         else {
+    //             gcoap_req_init(pdu, (uint8_t *)pdu->hdr, CONFIG_GCOAP_PDU_BUF_SIZE,
+    //                            COAP_METHOD_GET, _last_req_path);
+    //         }
 
-            if (msg_type == COAP_TYPE_ACK) {
-                coap_hdr_set_type(pdu->hdr, COAP_TYPE_CON);
-            }
-            block.blknum++;
-            coap_opt_add_block2_control(pdu, &block);
+    //         if (msg_type == COAP_TYPE_ACK) {
+    //             coap_hdr_set_type(pdu->hdr, COAP_TYPE_CON);
+    //         }
+    //         block.blknum++;
+    //         coap_opt_add_block2_control(pdu, &block);
 
-            if (_proxied) {
-                coap_opt_add_proxy_uri(pdu, _last_req_path);
-            }
+    //         if (_proxied) {
+    //             coap_opt_add_proxy_uri(pdu, _last_req_path);
+    //         }
 
-            int len = coap_opt_finish(pdu, COAP_OPT_FINISH_NONE);
-            gcoap_req_send((uint8_t *)pdu->hdr, len, remote,
-                           _resp_handler, memo->context);
-        }
-        else {
-            puts("--- blockwise complete ---");
-        }
-    }
+    //         int len = coap_opt_finish(pdu, COAP_OPT_FINISH_NONE);
+    //         gcoap_req_send((uint8_t *)pdu->hdr, len, remote,
+    //                        _resp_handler, memo->context);
+    //     }
+    //     else {
+    //         puts("--- blockwise complete ---");
+    //     }
+    // }
 }
 
 /*
