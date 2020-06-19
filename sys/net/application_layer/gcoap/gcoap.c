@@ -161,6 +161,9 @@ static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg)
             return;
         }
         puts("New client connected");
+        printf("_dtls_handler: pid: %d\n", sched_active_pid);
+        msg_t msg = { .type = DTLS_EVENT_CONNECTED };
+        msg_send(&msg, 2);
     }
     if (type & SOCK_ASYNC_CONN_FIN) {
         puts("Session was destroyed by peer");
@@ -864,21 +867,24 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
 
     puts("gcoap_req_send: about to send req");
     sock_dtls_session_t session = { 0 };
+    memcpy(&session.ep, remote, sizeof(sock_udp_ep_t));
 
-    int res = sock_dtls_session_init(&_dtls_sock, remote, &session);
-    if (res <= 0) {
-        puts("cannot init session with remote");
-        return -1;
-    }
+    // int res = sock_dtls_session_init(&_dtls_sock, remote, &session);
+    // if (res <= 0) {
+    //     puts("cannot init session with remote");
+    //     return -1;
+    // }
 
-    uint8_t handshake_buf[256];
-    while ((res = sock_dtls_recv(&_dtls_sock, &session, handshake_buf, sizeof(handshake_buf), SOCK_NO_TIMEOUT)) != -SOCK_DTLS_HANDSHAKE) {
-        printf("received len: %d\n", res);
-    }
+    // uint8_t handshake_buf[256];
+    // while ((res = sock_dtls_recv(&_dtls_sock, &session, handshake_buf, sizeof(handshake_buf), SOCK_NO_TIMEOUT)) != -SOCK_DTLS_HANDSHAKE) {
+    //     printf("received len: %d\n", res);
+    // }
 
-    res = sock_dtls_send(&_dtls_sock, &session, buf, len, SOCK_NO_TIMEOUT);
+    puts("calling sock_dtls_send");
+    int res = sock_dtls_send(&_dtls_sock, &session, buf, len, 2 * US_PER_SEC);
     if (res <= 0) {
         if (memo != NULL) {
+            puts("memom not NULL");
             if (msg_type == COAP_TYPE_CON) {
                 *memo->msg.data.pdu_buf = 0;    /* clear resend buffer */
             }

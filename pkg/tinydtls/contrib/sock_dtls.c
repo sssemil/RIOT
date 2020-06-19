@@ -365,6 +365,7 @@ ssize_t sock_dtls_send(sock_dtls_t *sock, sock_dtls_session_t *remote,
         }
 
         puts("dtls_connect");
+        _ep_to_session(&remote->ep, &remote->dtls_session);
         /* no session with remote, creating new session.
          * This will also create new peer for this session */
         res = dtls_connect(sock->dtls_ctx, &remote->dtls_session);
@@ -377,9 +378,10 @@ ssize_t sock_dtls_send(sock_dtls_t *sock, sock_dtls_session_t *remote,
 
             msg_t msg;
             bool is_timed_out = false;
+            printf("sock_dtls_send: pid: %d\n", sched_active_pid);
             do {
                 uint32_t start = xtimer_now_usec();
-                res = xtimer_msg_receive_timeout(&msg, timeout);
+                res = xtimer_msg_receive_timeout(&msg, timeout);    // FIXME: only receive msg from current pid, DTLS_EVENT_CONNECTED will not be received here
 
                 if (timeout != SOCK_NO_TIMEOUT) {
                     timeout = _update_timeout(start, timeout);
@@ -504,6 +506,7 @@ static ssize_t _complete_handshake(sock_dtls_t *sock,
 ssize_t sock_dtls_recv(sock_dtls_t *sock, sock_dtls_session_t *remote,
                        void *data, size_t max_len, uint32_t timeout)
 {
+    puts("enter sock_dtls_recv");
     assert(sock);
     assert(data);
     assert(remote);
