@@ -195,6 +195,9 @@ static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg)
 /* Handles sock events from the event queue. */
 static void _process_coap_pdu(sock_dtls_t *sock, sock_dtls_session_t *session, uint8_t *buf, size_t len)
 {
+    puts("entering _processing_coap_pdu");
+    printf("session: port: %d; ifindex: %d\n", session->dtls_session.port, session->dtls_session.ifindex);
+
     coap_pkt_t pdu;
     gcoap_request_memo_t *memo = NULL;
 
@@ -344,6 +347,7 @@ static size_t _handle_req(coap_pkt_t *pdu, uint8_t *buf, size_t len, sock_udp_ep
     }
 
     if (coap_get_observe(pdu) == COAP_OBS_REGISTER) {
+        puts("handle_req: COAP_OBS_REGISTER");
         /* lookup remote+token */
         int empty_slot = _find_obs_memo(&memo, remote, pdu);
         /* validate re-registration request */
@@ -398,6 +402,7 @@ static size_t _handle_req(coap_pkt_t *pdu, uint8_t *buf, size_t len, sock_udp_ep
         }
 
     } else if (coap_get_observe(pdu) == COAP_OBS_DEREGISTER) {
+        puts("handle_req: COAP_OBS_DEREGISTER");
         _find_obs_memo(&memo, remote, pdu);
         /* clear memo, and clear observer if no other memos */
         if (memo != NULL) {
@@ -420,6 +425,7 @@ static size_t _handle_req(coap_pkt_t *pdu, uint8_t *buf, size_t len, sock_udp_ep
         return -1;
     }
 
+    puts("handle_req: calling resource handler");
     ssize_t pdu_len = resource->handler(pdu, buf, len, resource->context);
     if (pdu_len < 0) {
         pdu_len = gcoap_response(pdu, buf, len,
@@ -881,7 +887,7 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
     // }
 
     puts("calling sock_dtls_send");
-    int res = sock_dtls_send(&_dtls_sock, &session, buf, len, 2 * US_PER_SEC);
+    int res = sock_dtls_send(&_dtls_sock, &session, buf, len, SOCK_NO_TIMEOUT);
     if (res <= 0) {
         if (memo != NULL) {
             puts("memom not NULL");
