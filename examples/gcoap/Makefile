@@ -27,6 +27,23 @@ USEMODULE += shell
 USEMODULE += shell_commands
 USEMODULE += ps
 
+# DTLS configuration
+CONFIG_GCOAP_USE_DTLS ?= 1
+ifeq (1,$(CONFIG_GCOAP_USE_DTLS))
+	DTLS_PORT ?= 20220
+	CFLAGS += -DDTLS_DEFAULT_PORT=$(DTLS_PORT)
+	CFLAGS += -DCONFIG_GCOAP_USE_DTLS=$(CONFIG_GCOAP_USE_DTLS)
+
+	USEPKG += tinydtls
+	USEMODULE += tinydtls_sock_dtls
+	USEMODULE += sock_async_event
+	USEMODULE += sock_dtls
+	USEMODULE += event_thread_medium
+	USEMODULE += event_timeout
+	# tinydtls needs crypto secure PRNG
+	USEMODULE += prng_sha1prng
+endif
+
 # Comment this out to disable code in RIOT that does safety checking
 # which is not needed in a production environment but helps in the
 # development process:
