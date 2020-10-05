@@ -401,7 +401,11 @@ extern "C" {
  * @brief   Server port; use RFC 7252 default if not defined
  */
 #ifndef CONFIG_GCOAP_PORT
+#ifdef  CONFIG_GCOAP_USE_DTLS
+#define CONFIG_GCOAP_PORT              (5684)
+#else
 #define CONFIG_GCOAP_PORT              (5683)
+#endif
 #endif
 
 /**
