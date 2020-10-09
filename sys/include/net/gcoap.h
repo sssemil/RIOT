@@ -768,6 +768,9 @@ struct gcoap_request_memo {
  */
 typedef struct {
     sock_udp_ep_t *observer;            /**< Client endpoint; unused if null */
+#ifdef CONFIG_GCOAP_USE_DTLS
+    sock_dtls_session_t dtls_session;   /**< DTLS session with remote */
+#endif
     const coap_resource_t *resource;    /**< Entity being observed */
     uint8_t token[GCOAP_TOKENLEN_MAX];  /**< Client token for notifications */
     unsigned token_len;                 /**< Actual length of token attribute */
