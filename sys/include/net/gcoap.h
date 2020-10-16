@@ -583,6 +583,15 @@ extern "C" {
 #define CONFIG_GCOAP_RESEND_BUFS_MAX      (1)
 #endif
 
+#ifdef CONFIG_GCOAP_USE_DTLS
+    /**
+     * @brief   Timeout for the handshake process. Set to 0 for infinite time.
+     */
+    #ifndef CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT
+    #define CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT     (10000)
+    #endif
+#endif
+
 /**
  * @name Bitwise positional flags for encoding resource links
  * @anchor COAP_LINK_FLAG_
