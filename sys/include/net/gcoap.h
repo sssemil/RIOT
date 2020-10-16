@@ -754,6 +754,9 @@ struct gcoap_request_memo {
     } msg;                              /**< Request message data; if confirmable,
                                              supports resending message */
     sock_udp_ep_t remote_ep;            /**< Remote endpoint */
+#ifdef CONFIG_GCOAP_USE_DTLS
+    sock_dtls_session_t dtls_session;   /**< DTLS session with remote */
+#endif
     gcoap_resp_handler_t resp_handler;  /**< Callback for the response */
     void *context;                      /**< ptr to user defined context data */
     event_timeout_t resp_evt_tmout;     /**< Limits wait for response */
