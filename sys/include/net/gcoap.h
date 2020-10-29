@@ -602,6 +602,28 @@ extern "C" {
 /** @} */
 
 /**
+ * @brief   Socket types
+ */
+ typedef enum {
+     GCOAP_SOCKET_TYPE_UDP = 0,
+     GCOAP_SOCKET_TYPE_DTLS
+ } coap_socket_type_t;
+
+/**
+ * @brief   Socket container to handle either a UDP or DTLS socket
+ */
+typedef struct {
+    union {
+        sock_udp_t *udp;
+#ifdef CONFIG_GCOAP_USE_DTLS
+        sock_dtls_t *dtls;
+#endif
+    } socket;
+    coap_socket_type_t type;
+} coap_socket_t;
+
+
+/**
  * @brief   Context information required to write a resource link
  */
 typedef struct {
