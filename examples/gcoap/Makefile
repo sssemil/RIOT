@@ -27,6 +27,22 @@ USEMODULE += shell
 USEMODULE += shell_commands
 USEMODULE += ps
 
+# DTLS configuration
+GCOAP_ENABLE_DTLS ?= 0
+ifeq (1,$(GCOAP_ENABLE_DTLS))
+	CFLAGS += -DCONFIG_GCOAP_ENABLE_DTLS=1
+	CFLAGS += -DCONFIG_GCOAP_DTLS_SESSIONS_MAX=1
+	# UDP Port to use (20220 is default for DTLS).
+	DTLS_PORT ?= 20220
+	CFLAGS += -DDTLS_DEFAULT_PORT=$(DTLS_PORT)
+
+	USEMODULE += gcoap_dtls
+	USEPKG += tinydtls
+	USEMODULE += tinydtls_sock_dtls
+	# tinydtls needs crypto secure PRNG
+	USEMODULE += prng_sha1prng
+endif
+
 # Comment this out to disable code in RIOT that does safety checking
 # which is not needed in a production environment but helps in the
 # development process:
