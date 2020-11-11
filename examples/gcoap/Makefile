@@ -54,6 +54,9 @@ QUIET ?= 1
 
 include $(RIOTBASE)/Makefile.include
 
+CFLAGS += -Wno-unused-variable
+CFLAGS += -Wno-unused-function
+
 # For now this goes after the inclusion of Makefile.include so Kconfig symbols
 # are available. Only set configuration via CFLAGS if Kconfig is not being used
 # for this module.
