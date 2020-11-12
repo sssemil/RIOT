@@ -387,6 +387,10 @@
 #include "net/nanocoap.h"
 #include "xtimer.h"
 
+#ifdef CONFIG_GCOAP_USE_DTLS
+#include "net/sock/dtls.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -406,6 +410,15 @@ extern "C" {
 #else
 #define CONFIG_GCOAP_PORT              (5683)
 #endif
+#endif
+
+/**
+ * @brief   Maximum number of maintained DTLS sessions.
+ */
+#ifndef CONFIG_GCOAP_DTLS_SESSIONS_MAX
+#define CONFIG_GCOAP_DTLS_SESSIONS_MAX  (CONFIG_GCOAP_REQ_WAITING_MAX \
+                                        + CONFIG_GCOAP_OBS_REGISTRATIONS_MAX)
+#define DTLS_SESSIONS_MAX               (CONFIG_GCOAP_DTLS_SESSIONS_MAX)
 #endif
 
 /**
@@ -587,8 +600,8 @@ extern "C" {
     /**
      * @brief   Timeout for the handshake process. Set to 0 for infinite time.
      */
-    #ifndef CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT
-    #define CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT     (10000)
+    #ifndef CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC
+    #define CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC     (3000000)
     #endif
 #endif
 
@@ -619,6 +632,9 @@ typedef struct {
         sock_dtls_t *dtls;
 #endif
     } socket;
+#ifdef CONFIG_GCOAP_USE_DTLS
+    sock_dtls_session_t *dtls_session;
+#endif
     coap_socket_type_t type;
 } coap_socket_t;
 

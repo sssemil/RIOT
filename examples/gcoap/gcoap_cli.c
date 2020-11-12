@@ -34,7 +34,7 @@
     #include "tinydtls_keys.h"
     #include "net/credman.h"
 
-    #define SOCK_DTLS_CLIENT_TAG (20)
+    #define SOCK_DTLS_CLIENT_TAG (2)
     static const uint8_t psk_id_0[] = PSK_DEFAULT_IDENTITY;
     static const uint8_t psk_key_0[] = PSK_DEFAULT_KEY;
 
