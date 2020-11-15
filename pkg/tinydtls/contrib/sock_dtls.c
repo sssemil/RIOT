@@ -28,7 +28,7 @@
 #include "net/sock/async/event.h"
 #endif
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 #include "dtls_debug.h"
 
@@ -311,9 +311,11 @@ int sock_dtls_session_init(sock_dtls_t *sock, const sock_udp_ep_t *ep,
 
     sock_udp_ep_t local;
     if (!sock->udp_sock || (sock_udp_get_local(sock->udp_sock, &local) < 0)) {
+        printf("sock_dtls_session_init: -EADDRNOTAVAIL\n");
         return -EADDRNOTAVAIL;
     }
     if (ep->port == 0) {
+        printf("sock_dtls_session_init: -EINVAL\n");
         return -EINVAL;
     }
     switch (ep->family) {
@@ -323,6 +325,7 @@ int sock_dtls_session_init(sock_dtls_t *sock, const sock_udp_ep_t *ep,
  #endif
             break;
         default:
+            printf("sock_dtls_session_init: -EINVAL\n");
             return -EINVAL;
     }
 
