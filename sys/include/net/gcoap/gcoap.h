@@ -400,9 +400,46 @@ extern "C" {
 /**
  * @brief   Server port; use RFC 7252 default if not defined
  */
-#ifndef CONFIG_GCOAP_PORT
+#ifdef  CONFIG_GCOAP_ENABLE_DTLS
+#define CONFIG_GCOAP_PORT              (5684)
+#else
 #define CONFIG_GCOAP_PORT              (5683)
 #endif
+
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+
+/**
+ * @brief   Maximum number of maintained DTLS sessions
+ */
+#ifndef CONFIG_GCOAP_DTLS_SESSIONS_MAX
+#define CONFIG_GCOAP_DTLS_SESSIONS_MAX   (2)
+#endif
+
+/* Configure maximum sessions for tinyDTLS */
+#ifndef DTLS_PEER_MAX
+#define DTLS_PEER_MAX   CONFIG_GCOAP_DTLS_SESSIONS_MAX
+#else
+#if DTLS_PEER_MAX < CONFIG_GCOAP_DTLS_SESSIONS_MAX
+#undef DTLS_PEER_MAX
+#define DTLS_PEER_MAX CONFIG_GCOAP_DTLS_SESSIONS_MAX
+#endif
+#endif
+
+/**
+ * @brief   Timeout for the DTLS handshake process. Set to 0 for infinite time
+ */
+#ifndef CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC
+#define CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC    (2 * US_PER_SEC)
+#endif
+
+/**
+ * @brief   Timeout for freeing up a session when all session slots are occupied
+ */
+#ifndef CONFIG_GCOAP_DTLS_FREE_UP_SESSION_TIMEOUT_MSEC
+#define CONFIG_GCOAP_DTLS_FREE_UP_SESSION_TIMEOUT_MSEC  (3000)
+#endif
+
+#endif /* CONFIG_GCOAP_ENABLE_DTLS */
 
 /**
  * @brief   Size of the buffer used to build a CoAP request or response
