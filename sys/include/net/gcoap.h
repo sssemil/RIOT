@@ -413,15 +413,6 @@ extern "C" {
 #endif
 
 /**
- * @brief   Maximum number of maintained DTLS sessions.
- */
-#ifndef CONFIG_GCOAP_DTLS_SESSIONS_MAX
-#define CONFIG_GCOAP_DTLS_SESSIONS_MAX  (CONFIG_GCOAP_REQ_WAITING_MAX \
-                                        + CONFIG_GCOAP_OBS_REGISTRATIONS_MAX)
-#define DTLS_SESSIONS_MAX               (CONFIG_GCOAP_DTLS_SESSIONS_MAX)
-#endif
-
-/**
  * @brief   Size of the buffer used to build a CoAP request or response
  */
 #ifndef CONFIG_GCOAP_PDU_BUF_SIZE

@@ -381,6 +381,9 @@ static inline void event_loop_multi(event_queue_t *queues, size_t n_queues)
     event_t *event;
 
     while ((event = event_wait_multi(queues, n_queues))) {
+        if (event->handler == NULL) {
+            printf("event handle is NULL\n");
+        }
         event->handler(event);
     }
 }

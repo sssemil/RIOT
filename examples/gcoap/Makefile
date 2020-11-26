@@ -34,6 +34,8 @@ ifeq (1,$(GCOAP_USE_DTLS))
 	DTLS_PORT ?= 20220
 	CFLAGS += -DDTLS_DEFAULT_PORT=$(DTLS_PORT)
 
+	CFLAGS += -DDTLS_SESSIONS_MAX=5
+
 	USEPKG += tinydtls
 	USEMODULE += tinydtls_sock_dtls
 	USEMODULE += sock_async_event

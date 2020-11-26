@@ -21,6 +21,7 @@
 #include "dtls.h"
 #include "log.h"
 #include "net/sock/dtls.h"
+#include "thread.h"
 #include "net/credman.h"
 
 #if SOCK_HAS_ASYNC
@@ -28,7 +29,7 @@
 #include "net/sock/async/event.h"
 #endif
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 #include "dtls_debug.h"
 
@@ -93,6 +94,25 @@ static int _read(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
     return len;
 }
 
+static inline void _print_remote(sock_udp_ep_t *remote) {
+    printf("Remote family: ");
+    switch (remote->family) {
+        case (AF_INET6):
+            printf("AF_INET6\n");
+            break;
+        case (AF_UNSPEC):
+            printf("AF_UNSPEC\n");
+            break;
+    }
+    printf("Remote address: ");
+    for (uint8_t i=0; i < sizeof(ipv6_addr_t); i++) {
+        printf("%02X:", remote->addr.ipv6[i]);
+    }
+    puts("");
+    printf("Remote port: %d\n", remote->port);
+    printf("Remote netif: %d\n", remote->netif);
+}
+
 static int _write(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
                   size_t len)
 {
@@ -105,6 +125,7 @@ static int _write(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
     ssize_t res = sock_udp_send(sock->udp_sock, buf, len, &remote);
     if (res < 0) {
         DEBUG("sock_dtls: failed to send DTLS record: %d\n", (int)res);
+        _print_remote(&remote);
     }
     return res;
 }
@@ -117,6 +138,7 @@ static int _event(struct dtls_context_t *ctx, session_t *session,
 
     sock_dtls_t *sock = dtls_get_app_data(ctx);
     msg_t msg = { .type = code, .content.ptr = session };
+
     if (IS_ACTIVE(ENABLE_DEBUG)) {
         switch (code) {
             case DTLS_EVENT_CONNECT:
@@ -148,6 +170,8 @@ static int _event(struct dtls_context_t *ctx, session_t *session,
             default:
                 break;
         }
+    } else {
+        printf("not existing\n");
     }
 #endif
     return 0;
@@ -368,7 +392,7 @@ ssize_t sock_dtls_send(sock_dtls_t *sock, sock_dtls_session_t *remote,
         if (timeout == 0) {
             return -ENOTCONN;
         }
-
+        _ep_to_session(&remote->ep, &remote->dtls_session);
         /* no session with remote, creating new session.
          * This will also create new peer for this session */
         res = dtls_connect(sock->dtls_ctx, &remote->dtls_session);
