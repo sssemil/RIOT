@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "net/gcoap.h"
+#include "net/gcoap/gcoap.h"
 #include "od.h"
 #include "fmt.h"
 

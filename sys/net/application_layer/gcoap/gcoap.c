@@ -26,7 +26,7 @@
 #include <string.h>
 
 #include "assert.h"
-#include "net/gcoap.h"
+#include "net/gcoap/gcoap.h"
 #include "net/sock/async/event.h"
 #include "net/sock/util.h"
 #include "mutex.h"

@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include "msg.h"
 
-#include "net/gcoap.h"
+#include "net/gcoap/gcoap.h"
 #include "shell.h"
 
 #define MAIN_QUEUE_SIZE (4)
