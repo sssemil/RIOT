@@ -26,6 +26,7 @@ PSEUDOMODULES += event_%
 PSEUDOMODULES += evtimer_mbox
 PSEUDOMODULES += evtimer_on_ztimer
 PSEUDOMODULES += fmt_%
+PSEUDOMODULES += gcoap_dtls
 PSEUDOMODULES += gcoap_dtls_session_management
 PSEUDOMODULES += gnrc_dhcpv6_%
 PSEUDOMODULES += gnrc_dhcpv6_client_mud_url

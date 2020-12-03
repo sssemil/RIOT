@@ -33,6 +33,12 @@
 #include "random.h"
 #include "thread.h"
 
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+#include "net/sock/dtls.h"
+#include "net/credman.h"
+#include "net/gcoap/dtls_session_management.h"
+#endif
+
 #define ENABLE_DEBUG 0
 #include "debug.h"
 
@@ -44,7 +50,14 @@
 
 /* Internal functions */
 static void *_event_loop(void *arg);
-static void _on_sock_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg);
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+static void _on_sock_dtls_evt(sock_dtls_t *sock, sock_async_flags_t type, void *arg);
+static void _dtls_free_up_session(void *arg);
+#else
+static void _on_sock_udp_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg);
+#endif
+static ssize_t _sock_send(sock_udp_t *sock, const void *data, size_t len,
+                      const sock_udp_ep_t *remote);
 static void _process_coap_pdu(sock_udp_t *sock, sock_udp_ep_t *remote,
                               uint8_t *buf, size_t len);
 static ssize_t _well_known_core_handler(coap_pkt_t* pdu, uint8_t *buf, size_t len, void *ctx);
@@ -110,6 +123,15 @@ static event_queue_t _queue;
 static uint8_t _listen_buf[CONFIG_GCOAP_PDU_BUF_SIZE];
 static sock_udp_t _sock_udp;
 
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+    #define SOCK_DTLS_CLIENT_TAG (2)
+    static sock_dtls_t _sock_dtls;
+    static kernel_pid_t _main_thread;
+
+    static event_timeout_t _dtls_session_free_up_tmout;
+    static event_callback_t _dtls_session_free_up_tmout_cb;
+#endif
+
 /* Event loop for gcoap _pid thread. */
 static void *_event_loop(void *arg)
 {
@@ -128,14 +150,111 @@ static void *_event_loop(void *arg)
     }
 
     event_queue_init(&_queue);
-    sock_udp_event_init(&_sock_udp, &_queue, _on_sock_evt, NULL);
-    event_loop(&_queue);
 
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+    sock_dtls_init();
+    if (sock_dtls_create(&_sock_dtls, &_sock_udp,
+                        SOCK_DTLS_CLIENT_TAG,
+                        SOCK_DTLS_1_2, SOCK_DTLS_SERVER) < 0) {
+        puts("Error creating DTLS sock");
+        sock_udp_close(&_sock_udp);
+        return 0;
+    }
+
+    dtls_session_management_init();
+    sock_dtls_event_init(&_sock_dtls, &_queue, _on_sock_dtls_evt,
+                        NULL);
+#else
+    sock_udp_event_init(&_sock_udp, &_queue, _on_sock_udp_evt, NULL);
+#endif
+
+    event_loop(&_queue);
     return 0;
 }
 
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+
+/* Handles DTLS socket events from the event queue */
+static void _on_sock_dtls_evt(sock_dtls_t *sock, sock_async_flags_t type, void *arg) {
+    (void)arg;
+    sock_dtls_session_t session = { 0 };
+
+    if (type & SOCK_ASYNC_CONN_RECV) {
+        ssize_t res = sock_dtls_recv(sock, &session,
+                            _listen_buf, sizeof(_listen_buf),
+                            CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC);
+        if (res != -SOCK_DTLS_HANDSHAKE) {
+            DEBUG("gcoap: could not establish DTLS session: %d\n", res);
+            sock_dtls_session_destroy(sock, &session);
+            return;
+        }
+
+        /* If session has been previously stored and the state was HANDSHAKE_ONGOING
+        before, the handshake has been initiated internally and another thread
+        is waiting for the handshake.   */
+        session_state_t prev_state = NO_SESSION;
+        res = dtls_session_store(&session, SESSION_ESTABLISHED, &prev_state, false);
+        if (res) {
+            /* Send message to main thread to inform about established session */
+            if (prev_state == HANDSHAKE_ONGOING) {
+                msg_t msg = { .type = DTLS_EVENT_CONNECTED };
+                msg_send(&msg, _main_thread);
+            }
+        } else {
+            /* No space in session management. Should not happen. If it occurs,
+            we lost track of sessions stored in tinydtls internally */
+            sock_dtls_session_destroy(sock, &session);
+        }
+
+        /* if no session slot is left: set timeout to free up session */
+        if (dtls_session_get_num_available_slots() == 0)
+        {
+            uint32_t timeout = US_PER_MS * CONFIG_GCOAP_DTLS_FREE_UP_SESSION_TIMEOUT_MSEC;
+            event_callback_init(&_dtls_session_free_up_tmout_cb,
+                                _dtls_free_up_session, NULL);
+            event_timeout_init(&_dtls_session_free_up_tmout, &_queue,
+                               &_dtls_session_free_up_tmout_cb.super);
+            event_timeout_set(&_dtls_session_free_up_tmout, timeout);
+        }
+    }
+
+    if (type & SOCK_ASYNC_CONN_FIN) {
+        session = *workaround_get_finished_session();
+        if (dtls_session_remove(&session) == -1) {
+            printf("gcoap: could not remove finished DTLS session\n");
+        }
+    }
+
+    if (type & SOCK_ASYNC_MSG_RECV) {
+        ssize_t res = sock_dtls_recv(sock, &session, _listen_buf,
+                                    sizeof(_listen_buf), 0);
+        if (res <= 0) {
+            DEBUG("gcoap: DTLS receive failure: %d\n", (int)res);
+            return;
+        }
+
+        _process_coap_pdu(&_sock_udp, &session.ep,  _listen_buf, res);
+    }
+}
+
+/* Timeout function to free up a session when all session slots are occupied */
+static void _dtls_free_up_session(void *arg) {
+    (void)arg;
+    sock_dtls_session_t session;
+
+    if (dtls_session_get_num_available_slots() == 0) {
+        if(dtls_session_get_oldest_used_session(&session) != -1) {
+            /* free up session */
+            dtls_session_remove(&session);
+            sock_dtls_session_destroy(&_sock_dtls, &session);
+        }
+    }
+}
+
+#else
+
 /* Handles UDP socket events from the event queue. */
-static void _on_sock_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg)
+static void _on_sock_udp_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg)
 {
     (void)arg;
     sock_udp_ep_t remote;
@@ -149,6 +268,35 @@ static void _on_sock_evt(sock_udp_t *sock, sock_async_flags_t type, void *arg)
         }
         _process_coap_pdu(sock, &remote, _listen_buf, res);
     }
+}
+#endif
+
+static ssize_t _sock_send(sock_udp_t *sock, const void *data, size_t len,
+                      const sock_udp_ep_t *remote)
+{
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+    (void) sock;
+    sock_dtls_session_t session = {0};
+
+    /* prepare session */
+    memcpy(&session.ep, remote, sizeof(sock_udp_ep_t));
+
+    int res = dtls_session_store(&session, HANDSHAKE_ONGOING, NULL, true);
+    if (res == -1) {
+        return res;
+    }
+
+    /* send application data */
+    res = sock_dtls_send(&_sock_dtls, &session, data, len,
+                            2*CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC);
+    if (!res) {
+        dtls_session_remove(&session);
+        sock_dtls_session_destroy(&_sock_dtls, &session);
+    }
+#else
+    int res = sock_udp_send(sock, data, len, remote);
+#endif
+    return res;
 }
 
 /* Processes and evaluates the coap pdu */
@@ -201,7 +349,7 @@ static void _process_coap_pdu(sock_udp_t *sock, sock_udp_ep_t *remote,
             size_t pdu_len = _handle_req(&pdu, _listen_buf, sizeof(_listen_buf),
                                             remote);
             if (pdu_len > 0) {
-                ssize_t bytes = sock_udp_send(sock, _listen_buf, pdu_len,
+                ssize_t bytes = _sock_send(sock, _listen_buf, pdu_len,
                                                 remote);
                 if (bytes <= 0) {
                     DEBUG("gcoap: send response failed: %d\n", (int)bytes);
@@ -262,7 +410,7 @@ static void _process_coap_pdu(sock_udp_t *sock, sock_udp_ep_t *remote,
          * */
         pdu.hdr->ver_t_tkl &= 0xf0;
 
-        ssize_t bytes = sock_udp_send(sock, buf,
+        ssize_t bytes = _sock_send(sock, buf,
                                       sizeof(coap_hdr_t), remote);
         if (bytes <= 0) {
             DEBUG("gcoap: empty response failed: %d\n", (int)bytes);
@@ -299,7 +447,7 @@ static void _on_resp_timeout(void *arg) {
             return;
         }
 
-        ssize_t bytes = sock_udp_send(&_sock_udp, memo->msg.data.pdu_buf,
+        ssize_t bytes = _sock_send(&_sock_udp, memo->msg.data.pdu_buf,
                                       memo->msg.data.pdu_len, &memo->remote_ep);
         if (bytes <= 0) {
             DEBUG("gcoap: sock resend failed: %d\n", (int)bytes);
@@ -741,6 +889,11 @@ kernel_pid_t gcoap_init(void)
     if (_pid != KERNEL_PID_UNDEF) {
         return -EEXIST;
     }
+
+#ifdef CONFIG_GCOAP_ENABLE_DTLS
+    _main_thread = thread_getpid();
+#endif
+
     _pid = thread_create(_msg_stack, sizeof(_msg_stack), THREAD_PRIORITY_MAIN - 1,
                             THREAD_CREATE_STACKTEST, _event_loop, NULL, "coap");
 
@@ -900,7 +1053,7 @@ size_t gcoap_req_send(const uint8_t *buf, size_t len,
         }
     }
 
-    ssize_t res = sock_udp_send(&_sock_udp, buf, len, remote);
+    ssize_t res = _sock_send(&_sock_udp, buf, len, remote);
     if (res <= 0) {
         if (memo != NULL) {
             if (msg_type == COAP_TYPE_CON) {
@@ -978,7 +1131,7 @@ size_t gcoap_obs_send(const uint8_t *buf, size_t len,
     _find_obs_memo_resource(&memo, resource);
 
     if (memo) {
-        ssize_t bytes = sock_udp_send(&_sock_udp, buf, len, memo->observer);
+        ssize_t bytes = _sock_send(&_sock_udp, buf, len, memo->observer);
         return (size_t)((bytes > 0) ? bytes : 0);
     }
     else {
