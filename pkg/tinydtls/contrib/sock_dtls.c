@@ -75,6 +75,8 @@ static dtls_handler_t _dtls_handler = {
 #endif /* CONFIG_DTLS_ECC */
 };
 
+static sock_dtls_session_t _workaround_finished_session;
+
 static int _read(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
                  size_t len)
 {
@@ -109,6 +111,11 @@ static int _write(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
     return res;
 }
 
+sock_dtls_session_t *workaround_get_finished_session(void)
+{
+    return &_workaround_finished_session;
+}
+
 static int _event(struct dtls_context_t *ctx, session_t *session,
                   dtls_alert_level_t level, unsigned short code)
 {
@@ -138,6 +145,11 @@ static int _event(struct dtls_context_t *ctx, session_t *session,
         switch (code) {
             case DTLS_ALERT_CLOSE_NOTIFY:
                 /* peer closed their session */
+
+                _session_to_ep(session, &_workaround_finished_session.ep);
+                memcpy(&_workaround_finished_session.dtls_session, session,
+                        sizeof(session_t));
+
                 sock->async_cb(sock, SOCK_ASYNC_CONN_FIN, sock->async_cb_arg);
                 break;
             case DTLS_EVENT_CONNECTED:

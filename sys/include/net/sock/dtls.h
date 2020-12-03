@@ -798,6 +798,8 @@ static inline int sock_dtls_session_create(sock_dtls_t *sock,
     return res == -SOCK_DTLS_HANDSHAKE ? 0 : res;
 }
 
+sock_dtls_session_t *workaround_get_finished_session(void);
+
 #include "sock_dtls_types.h"
 
 #ifdef __cplusplus
