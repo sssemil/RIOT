@@ -87,6 +87,7 @@ static int _read(struct dtls_context_t *ctx, session_t *session, uint8_t *buf,
     sock->buffer.session = session;
 #ifdef SOCK_HAS_ASYNC
     if (sock->async_cb != NULL) {
+        memcpy(&sock->async_cb_session, session, sizeof(session_t));
         sock->async_cb(sock, SOCK_ASYNC_MSG_RECV, sock->async_cb_arg);
     }
 #endif
@@ -135,6 +136,7 @@ static int _event(struct dtls_context_t *ctx, session_t *session,
     }
 #ifdef SOCK_HAS_ASYNC
     if (sock->async_cb != NULL) {
+        memcpy(&sock->async_cb_session, session, sizeof(session_t));
         switch (code) {
             case DTLS_ALERT_CLOSE_NOTIFY:
                 /* peer closed their session */
@@ -478,6 +480,7 @@ static ssize_t _copy_buffer(sock_dtls_t *sock, sock_dtls_session_t *remote,
         if (sock->async_cb &&
             /* is there a message in the sock's mbox? */
             mbox_avail(&sock->mbox)) {
+            memcpy(&sock->async_cb_session, &remote->dtls_session, sizeof(session_t));
             if (sock->buffer.data) {
                 sock->async_cb(sock, SOCK_ASYNC_MSG_RECV,
                                sock->async_cb_arg);
@@ -608,6 +611,13 @@ static inline uint32_t _update_timeout(uint32_t start, uint32_t timeout)
 }
 
 #ifdef SOCK_HAS_ASYNC
+void sock_dtls_get_event_session(sock_dtls_t *sock, sock_dtls_session_t *session)
+{
+    assert(sock);
+    assert(session);
+    memcpy(&session->dtls_session, &sock->async_cb_session, sizeof(session_t));
+}
+
 void _udp_cb(sock_udp_t *udp_sock, sock_async_flags_t flags, void *ctx)
 {
     sock_dtls_t *sock = ctx;
