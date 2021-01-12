@@ -46,7 +46,7 @@ extern "C" {
 void sock_dtls_get_event_session(sock_dtls_t *sock, sock_dtls_session_t *session);
 
 /**
- * @brief   Gets the asynchronous event context from sock object
+ * @brief   Sets the asynchronous event context from sock object
  *
  * @pre `(sock != NULL)`
  *
