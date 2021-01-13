@@ -105,10 +105,19 @@ static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg)
         return;
     }
 
+    sock_dtls_session_t session = { 0 };
     if (type & SOCK_ASYNC_CONN_RECV) {
-        sock_dtls_session_t session = { 0 };
+        printf("Session handshake received: ");
+        sock_dtls_get_event_session(sock, &session);
 
-        puts("Session handshake received");
+        sock_udp_ep_t ep;
+        sock_dtls_session_get_udp_ep(&session, &ep);
+        printf("Peer: ");
+        for (uint8_t i=0; i < sizeof(ipv6_addr_t); i++) {
+            printf("%02X:", ep.addr.ipv6[i]);
+        }
+        printf(" Port: %d Family: %d\n", ep.port, ep.family);
+
         if (sock_dtls_recv(sock, &session, _recv_buf, sizeof(_recv_buf),
                            0) != -SOCK_DTLS_HANDSHAKE) {
             puts("Error creating session");
@@ -117,13 +126,42 @@ static void _dtls_handler(sock_dtls_t *sock, sock_async_flags_t type, void *arg)
         puts("New client connected");
     }
     if (type & SOCK_ASYNC_CONN_FIN) {
-        puts("Session was destroyed by peer");
+        sock_dtls_get_event_session(sock, &session);
+
+        printf("Session was destroyed by peer: ");
+        sock_udp_ep_t ep;
+        sock_dtls_session_get_udp_ep(&session, &ep);
+        printf("Peer: ");
+        for (uint8_t i=0; i < sizeof(ipv6_addr_t); i++) {
+            printf("%02X:", ep.addr.ipv6[i]);
+        }
+        printf(" Port: %d Family: %d\n\n", ep.port, ep.family);
     }
     if (type & SOCK_ASYNC_CONN_RDY) {
-        puts("Session became ready");
+        printf("Session became ready: ");
+        sock_dtls_get_event_session(sock, &session);
+
+        sock_udp_ep_t ep;
+        sock_dtls_session_get_udp_ep(&session, &ep);
+        printf("Peer: ");
+        for (uint8_t i=0; i < sizeof(ipv6_addr_t); i++) {
+            printf("%02X:", ep.addr.ipv6[i]);
+        }
+        printf(" Port: %d Family: %d\n", ep.port, ep.family);
+
     }
     if (type & SOCK_ASYNC_MSG_RECV) {
-        sock_dtls_session_t session = { 0 };
+        printf("Message received: ");
+        sock_dtls_get_event_session(sock, &session);
+
+        sock_udp_ep_t ep;
+        sock_dtls_session_get_udp_ep(&session, &ep);
+        printf("Peer: ");
+        for (uint8_t i=0; i < sizeof(ipv6_addr_t); i++) {
+            printf("%02X:", ep.addr.ipv6[i]);
+        }
+        printf(" Port: %d Family: %d\n", ep.port, ep.family);
+
         ssize_t res;
 
         res = sock_dtls_recv(sock, &session, _recv_buf, sizeof(_recv_buf), 0);
