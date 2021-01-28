@@ -400,8 +400,32 @@ extern "C" {
 /**
  * @brief   Server port; use RFC 7252 default if not defined
  */
-#ifndef CONFIG_GCOAP_PORT
+#if IS_ACTIVE(CONFIG_GCOAP_ENABLE_DTLS)
+#define CONFIG_GCOAP_PORT              (5684)
+#else
 #define CONFIG_GCOAP_PORT              (5683)
+#endif
+
+/**
+ * @brief   Timeout for the DTLS handshake process. Set to 0 for infinite time
+ */
+#ifndef CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC
+#define CONFIG_GCOAP_DTLS_HANDSHAKE_TIMEOUT_USEC    (2 * US_PER_SEC)
+#endif
+
+/**
+ * @brief   Number of minimum free sessions
+ */
+#ifndef CONFIG_GCOAP_DTLS_FREE_UP_MINIMUM_SESSIONS
+#define CONFIG_GCOAP_DTLS_FREE_UP_MINIMUM_SESSIONS  (1)
+#endif
+
+/**
+ * @brief   Timeout for freeing up a session when minimum number of free
+ *          sessions is not given.
+ */
+#ifndef CONFIG_GCOAP_DTLS_FREE_UP_SESSION_TIMEOUT_USEC
+#define CONFIG_GCOAP_DTLS_FREE_UP_SESSION_TIMEOUT_USEC  (10 * US_PER_SEC)
 #endif
 
 /**
@@ -703,6 +727,9 @@ struct gcoap_request_memo {
     } msg;                              /**< Request message data; if confirmable,
                                              supports resending message */
     sock_udp_ep_t remote_ep;            /**< Remote endpoint */
+#if IS_ACTIVE(CONFIG_GCOAP_ENABLE_DTLS)
+    uint16_t dtls_epoch;                 /**< Valid DTLS epoch of this request */
+#endif
     gcoap_resp_handler_t resp_handler;  /**< Callback for the response */
     void *context;                      /**< ptr to user defined context data */
     event_timeout_t resp_evt_tmout;     /**< Limits wait for response */
