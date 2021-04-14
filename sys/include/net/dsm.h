@@ -82,6 +82,7 @@ dsm_state_t dsm_store(sock_dtls_t *sock, sock_dtls_session_t *session,
  * @param[in]  session      Session to store
  */
 void dsm_remove(sock_dtls_t *sock, sock_dtls_session_t *session);
+void dsm_remove_all(void);
 
 /**
  * @brief   Returns the maximum number of available sessions slots

@@ -26,7 +26,8 @@
 #define ENABLE_DEBUG 0
 #include "debug.h"
 
-typedef struct {
+typedef struct
+{
     sock_dtls_t *sock;
     sock_dtls_session_t session;
     dsm_state_t state;
@@ -40,11 +41,13 @@ static mutex_t _lock;
 static dsm_session_t _sessions[DTLS_PEER_MAX];
 static uint8_t _available_slots;
 
-void dsm_init(void) {
+void dsm_init(void)
+{
     mutex_init(&_lock);
     _available_slots = DTLS_PEER_MAX;
 
-    for (uint8_t i=0; i < DTLS_PEER_MAX; i++) {
+    for (uint8_t i = 0; i < DTLS_PEER_MAX; i++)
+    {
         _sessions[i].state = SESSION_STATE_NONE;
         memset(&_sessions[i], 0, sizeof(dsm_session_t));
     }
@@ -59,29 +62,34 @@ dsm_state_t dsm_store(sock_dtls_t *sock, sock_dtls_session_t *session,
     mutex_lock(&_lock);
 
     ssize_t res = _find_session(sock, session, &session_slot);
-    if (res != -1) {
+    if (res != -1)
+    {
         prev_state = session_slot->state;
-        if (session_slot->state != SESSION_STATE_ESTABLISHED) {
+        if (session_slot->state != SESSION_STATE_ESTABLISHED)
+        {
             session_slot->state = new_state;
         }
 
         /* no existing session found */
-        if (res == 0) {
+        if (res == 0)
+        {
             DEBUG("dsm: no existing session found, storing as new session\n")
             sock_dtls_session_get_udp_ep(session, &ep);
             sock_dtls_session_set_udp_ep(&session_slot->session, &ep);
             session_slot->sock = sock;
             _available_slots--;
-
         }
 
         /* existing session found and session should be restored */
-        if (res == 1 && restore) {
+        if (res == 1 && restore)
+        {
             DEBUG("dsm: existing session found, restoring\n")
             memcpy(session, &session_slot->session, sizeof(sock_dtls_session_t));
         }
         session_slot->last_used = xtimer_now_usec64();
-    } else {
+    }
+    else
+    {
         DEBUG("dsm: no space for session to store\n")
     }
 
@@ -93,15 +101,29 @@ void dsm_remove(sock_dtls_t *sock, sock_dtls_session_t *session)
 {
     dsm_session_t *session_slot = NULL;
     mutex_lock(&_lock);
-    if (_find_session(sock, session, &session_slot) == 1) {
-        memset(&session_slot->session, 0 , sizeof(session_slot->session));
+    if (_find_session(sock, session, &session_slot) == 1)
+    {
+        memset(&session_slot->session, 0, sizeof(session_slot->session));
         session_slot->state = SESSION_STATE_NONE;
         _available_slots++;
         DEBUG("dsm: removed session\n");
-    } else {
+    }
+    else
+    {
         DEBUG("dsm: could not find session to remove, it was probably already removed\n");
     }
     mutex_unlock(&_lock);
+}
+
+void dsm_remove_all(void)
+{
+    dsm_session_t *session_slot = NULL;
+    for (uint8_t i = 0; i < DTLS_PEER_MAX; i++)
+    {
+        session_slot = &_sessions[i];
+        dsm_remove(session_slot->sock, &session_slot->session);
+        sock_dtls_session_destroy(session_slot->sock, &session_slot->session);
+    }
 }
 
 uint8_t dsm_get_num_available_slots(void)
@@ -119,20 +141,22 @@ ssize_t dsm_get_oldest_used_session(sock_dtls_t *sock, sock_dtls_session_t *sess
     int res = -1;
     dsm_session_t *session_slot = NULL;
 
-    if (dsm_get_num_available_slots() != DTLS_PEER_MAX) {
+    if (dsm_get_num_available_slots() != DTLS_PEER_MAX)
+    {
         mutex_lock(&_lock);
-        for (uint8_t i=0; i < DTLS_PEER_MAX; i++) {
-            if (_sessions[i].state == SESSION_STATE_ESTABLISHED
-                    && _sessions[i].sock == sock) {
-                if (session_slot == NULL
-                    || session_slot->last_used > _sessions[i].last_used)
+        for (uint8_t i = 0; i < DTLS_PEER_MAX; i++)
+        {
+            if (_sessions[i].state == SESSION_STATE_ESTABLISHED && _sessions[i].sock == sock)
+            {
+                if (session_slot == NULL || session_slot->last_used > _sessions[i].last_used)
                 {
                     session_slot = &_sessions[i];
                 }
             }
         }
 
-        if (session_slot) {
+        if (session_slot)
+        {
             memcpy(session, &session_slot->session, sizeof(sock_dtls_session_t));
             res = 1;
         }
@@ -146,30 +170,36 @@ ssize_t dsm_get_oldest_used_session(sock_dtls_t *sock, sock_dtls_session_t *sess
  * Returns 0, if empty slot found
  * Returns -1, if no existing or empty session found */
 static int _find_session(sock_dtls_t *sock, sock_dtls_session_t *to_find,
-                         dsm_session_t **session) {
+                         dsm_session_t **session)
+{
 
     /* FIXME: optimize search / data structure */
     sock_udp_ep_t to_find_ep, curr_ep;
     dsm_session_t *empty_session = NULL;
 
-
     sock_dtls_session_get_udp_ep(to_find, &to_find_ep);
-    for (uint8_t i=0; i < DTLS_PEER_MAX; i++) {
+    for (uint8_t i = 0; i < DTLS_PEER_MAX; i++)
+    {
         sock_dtls_session_get_udp_ep(&_sessions[i].session, &curr_ep);
 
-        if (sock_udp_ep_equal(&curr_ep, &to_find_ep) && _sessions[i].sock == sock) {
+        if (sock_udp_ep_equal(&curr_ep, &to_find_ep) && _sessions[i].sock == sock)
+        {
             /* found existing session */
             *session = &_sessions[i];
             return 1;
         }
-        if (_sessions[i].state == SESSION_STATE_NONE) {
+        if (_sessions[i].state == SESSION_STATE_NONE)
+        {
             empty_session = &_sessions[i];
         }
     }
-    if (empty_session) {
+    if (empty_session)
+    {
         *session = empty_session;
         return 0;
-    } else {
+    }
+    else
+    {
         (void)session;
     }
     return -1;
